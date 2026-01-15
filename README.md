@@ -32,20 +32,34 @@ Enable Claude Code to request asynchronous input from subject matter experts via
 
 **Configure Bot Permissions:**
 - Navigate to "OAuth & Permissions"
-- Add Bot Token Scopes:
-  - `chat:write`
-  - `users:read`
-  - `im:read`
-  - `im:write`
-  - `im:history`
-- Click "Install to Workspace"
-- Copy the `xoxb-...` Bot User OAuth Token
+- Add Bot Token Scopes (you need ALL 6 of these):
+  - `chat:write` - Send messages
+  - `users:read` - View people in workspace
+  - `users:read.email` - View email addresses
+  - `im:read` - View DM content
+  - `im:write` - Start direct messages
+  - `im:history` - View DM history
 
-**Enable Events:**
+**Enable App Home:**
+- Navigate to "App Home" in sidebar
+- Scroll to "Show Tabs" section
+- Under "Messages Tab":
+  - Toggle ON: "Allow users to send Slash commands and messages from the messages tab"
+- This is CRITICAL - without this, users cannot reply to the bot
+
+**Enable Event Subscriptions:**
 - Navigate to "Event Subscriptions"
 - Toggle "Enable Events" to ON
-- Subscribe to bot event: `message.im`
+- Under "Subscribe to bot events", add: `message.im`
 - Save Changes
+- Note: If Socket Mode is enabled, you won't need a Request URL
+
+**Install the App:**
+- Navigate to "Install App" in sidebar
+- Click "Install to Workspace" (or "Reinstall to Workspace")
+- Review permissions on OAuth screen - you should see all 6 bot scopes listed
+- Click "Allow"
+- Copy the `xoxb-...` Bot User OAuth Token from the "OAuth & Permissions" page
 
 ### 3. Install
 
@@ -200,6 +214,36 @@ tail -f .claude/logs/slack-skill-server.log
 - Check server logs for errors
 - Verify the Slack user replied to the bot's DM (not a new message)
 
+### "Sending messages to this app has been turned off"
+
+If you see this message in Slack when trying to reply to the bot:
+
+**Step 1: Verify App Home Configuration**
+- Go to https://api.slack.com/apps → Your app → "App Home"
+- Under "Messages Tab", ensure "Allow users to send Slash commands and messages from the messages tab" is ON
+
+**Step 2: Verify All Scopes Are Present**
+- Go to "OAuth & Permissions"
+- Verify ALL 6 bot token scopes are listed (see setup section above)
+- If any are missing, add them
+
+**Step 3: Reinstall the App**
+- After adding scopes or enabling Messages Tab, you MUST reinstall
+- Go to "Install App" → "Reinstall to Workspace"
+- On the OAuth screen, verify all permissions are listed
+- Click "Allow"
+- Copy the NEW bot token and update `.claude/config/slack-skill.yaml`
+- Restart the server: `./scripts/stop-server.sh && ./scripts/start-server.sh`
+
+**Step 4: Reset the DM Conversation**
+- If the above steps don't work, the existing DM may be in a stuck state
+- In Slack, close the DM with the bot (right-click → Close conversation)
+- Start a fresh DM by clicking "+" next to Direct messages
+- Search for your bot name and open the conversation
+- The messaging should now work
+
+**Important:** When you add OAuth scopes or enable Messages Tab after the app has already been installed, you must fully uninstall and reinstall the app. Simply clicking "Reinstall" may not be enough - you may need to remove the app from your workspace first (Workspace menu → Settings & administration → Manage apps → Remove app), then reinstall it fresh.
+
 ## Project Structure
 
 ```
@@ -225,6 +269,28 @@ slack-skill/
 ## Architecture
 
 See [ARCHITECTURE.md](ARCHITECTURE.md) for detailed technical documentation.
+
+## Technical Notes
+
+### WebSocket Dependencies
+
+The server uses Slack's Socket Mode which requires WebSocket support. The required dependencies are already configured in `shared/build.gradle.kts`:
+
+```kotlin
+// WebSocket support for Socket Mode
+implementation("javax.websocket:javax.websocket-api:1.1")
+implementation("org.glassfish.tyrus.bundles:tyrus-standalone-client:1.17")
+```
+
+**Important:** Tyrus 1.17 is required - version 2.x has compatibility issues with the Slack SDK. Do not upgrade to Tyrus 2.x.
+
+### Socket Mode vs HTTP Mode
+
+This skill uses Socket Mode (WebSocket connections) rather than HTTP webhooks for receiving Slack events. This means:
+- No public URL needed for your server
+- App-level token (`xapp-...`) with `connections:write` scope is required
+- The server establishes a persistent WebSocket connection to Slack
+- Events are pushed to your server in real-time
 
 ## License
 
