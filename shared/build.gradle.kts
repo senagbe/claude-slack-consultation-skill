@@ -8,6 +8,10 @@ dependencies {
     api("com.slack.api:bolt:1.37.0")
     api("com.slack.api:bolt-socket-mode:1.37.0")
 
+    // WebSocket support for Socket Mode
+    implementation("javax.websocket:javax.websocket-api:1.1")
+    implementation("org.glassfish.tyrus.bundles:tyrus-standalone-client:1.17")
+
     // Kotlinx Serialization
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.2")
 
