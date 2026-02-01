@@ -32,7 +32,20 @@ class ConfigManager(private val configPath: String = ".claude/config/slack-skill
                     ?: throw ConfigException("Missing required field: slack_app_token"),
                 timeoutHours = (configMap["timeout_hours"] as? Number)?.toInt() ?: 24,
                 userAliases = parseUserAliases(configMap["user_aliases"]),
-                logLevel = configMap["log_level"]?.toString()?.uppercase() ?: "INFO"
+                logLevel = configMap["log_level"]?.toString()?.uppercase() ?: "INFO",
+                mongoConnectionString = getEnvOrConfig(
+                    "MONGODB_CONNECTION_STRING",
+                    configMap["mongo_connection_string"]?.toString(),
+                    "mongodb://localhost:27017"
+                ),
+                mongoDatabase = getEnvOrConfig(
+                    "MONGODB_DATABASE",
+                    configMap["mongo_database"]?.toString(),
+                    "slack_skill"
+                ),
+                healthPort = (configMap["health_port"] as? Number)?.toInt() ?: 8080,
+                heartbeatIntervalSeconds = (configMap["heartbeat_interval_seconds"] as? Number)?.toInt() ?: 30,
+                heartbeatStaleThresholdSeconds = (configMap["heartbeat_stale_threshold_seconds"] as? Number)?.toInt() ?: 90
             )
 
             config.validate()
@@ -43,6 +56,10 @@ class ConfigManager(private val configPath: String = ".claude/config/slack-skill
         } catch (e: Exception) {
             throw ConfigException("Failed to parse configuration file: ${e.message}", e)
         }
+    }
+
+    private fun getEnvOrConfig(envVar: String, configValue: String?, default: String): String {
+        return System.getenv(envVar) ?: configValue ?: default
     }
 
     private fun parseUserAliases(aliases: Any?): Map<String, String> {

@@ -1,9 +1,9 @@
 package com.claude.slack.server.handler
 
-import com.claude.slack.shared.state.StateManager
+import com.claude.slack.shared.state.StateManagerInterface
 import org.slf4j.LoggerFactory
 
-class ResponseHandler(private val stateManager: StateManager) {
+class ResponseHandler(private val stateManager: StateManagerInterface) {
 
     private val logger = LoggerFactory.getLogger(ResponseHandler::class.java)
 

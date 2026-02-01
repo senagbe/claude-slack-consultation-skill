@@ -8,6 +8,9 @@ Enable Claude Code to request asynchronous input from subject matter experts via
 - **Real-time Response Capture**: Background server listens for Slack replies via Socket Mode
 - **User Resolution**: Fuzzy matching on usernames, emails, and custom aliases
 - **Automatic Timeout**: Configurable expiration (default 24 hours)
+- **MongoDB Storage**: Persistent state storage with MongoDB
+- **Health Endpoints**: Kubernetes-ready health/readiness probes
+- **CLI Resilience**: Automatic retry with health checks
 - **Cross-platform**: Works on macOS and Linux with systemd/launchd support
 
 ## Quick Start
@@ -15,6 +18,7 @@ Enable Claude Code to request asynchronous input from subject matter experts via
 ### 1. Prerequisites
 
 - Java 17+ installed
+- Docker (for MongoDB) or MongoDB installed locally
 - A Slack workspace with admin access to create apps
 - Claude Code installed
 
@@ -74,7 +78,14 @@ The installer will:
 - Validate your Slack tokens
 - Optionally install the server as a system service
 
-### 4. Configuration
+### 4. Start MongoDB
+
+```bash
+# Using Docker (recommended for local dev)
+docker run -d --name slack-skill-mongo -p 27017:27017 mongo:6.0
+```
+
+### 5. Configuration
 
 Edit `.claude/config/slack-skill.yaml`:
 
@@ -86,7 +97,18 @@ user_aliases:
   john: "U123ABC"              # Slack user ID
   jane: "jane.doe@company.com" # Email
 log_level: INFO
+
+# MongoDB Configuration
+mongo_connection_string: "mongodb://localhost:27017"
+mongo_database: "slack_skill"
+
+# Health Check Configuration
+health_port: 8080
+heartbeat_interval_seconds: 30
+heartbeat_stale_threshold_seconds: 90
 ```
+
+Environment variables `MONGODB_CONNECTION_STRING` and `MONGODB_DATABASE` can override config file values.
 
 Validate configuration:
 
@@ -94,7 +116,7 @@ Validate configuration:
 ./gradlew :cli:run --args="config"
 ```
 
-### 5. Start the Server
+### 6. Start the Server
 
 **Option A: As a service (auto-starts on boot)**
 
@@ -266,9 +288,34 @@ slack-skill/
     └── logs/                 # Server logs
 ```
 
+## Health Endpoints
+
+The server exposes health endpoints for monitoring:
+
+```bash
+curl http://localhost:8080/health          # General health status
+curl http://localhost:8080/health/live     # Kubernetes liveness probe
+curl http://localhost:8080/health/ready    # Kubernetes readiness probe
+curl http://localhost:8080/health/heartbeat # Server heartbeat status
+```
+
 ## Architecture
 
 See [ARCHITECTURE.md](ARCHITECTURE.md) for detailed technical documentation.
+
+## Deployment
+
+See [DEPLOYMENT.md](DEPLOYMENT.md) for production deployment instructions including:
+- Local development setup
+- Kubernetes/GKE deployment
+- MongoDB configuration
+
+## Testing
+
+See [TESTING.md](TESTING.md) for testing instructions including:
+- Running unit tests
+- MongoDB integration tests with Testcontainers
+- Manual testing checklist
 
 ## Technical Notes
 

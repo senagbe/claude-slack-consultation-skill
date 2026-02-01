@@ -1,8 +1,10 @@
 package com.claude.slack.server
 
 import com.claude.slack.shared.config.ConfigManager
-import com.claude.slack.shared.state.StateManager
+import com.claude.slack.shared.state.MongoStateManager
 import com.claude.slack.server.handler.ResponseHandler
+import com.claude.slack.server.health.HeartbeatService
+import com.claude.slack.server.health.HealthServer
 import com.claude.slack.server.listener.SlackEventListener
 import org.slf4j.LoggerFactory
 import kotlin.system.exitProcess
@@ -35,6 +37,9 @@ class SlackConsultationServer {
     val logger = LoggerFactory.getLogger(SlackConsultationServer::class.java)
 
     private var eventListener: SlackEventListener? = null
+    private var stateManager: MongoStateManager? = null
+    private var heartbeatService: HeartbeatService? = null
+    private var healthServer: HealthServer? = null
     private var isRunning = false
 
     fun start() {
@@ -49,14 +54,33 @@ class SlackConsultationServer {
             val config = configManager.loadConfig()
             logger.info("Configuration loaded successfully")
 
-            // Initialize state manager
-            logger.info("Initializing state manager...")
-            val stateManager = StateManager()
-            logger.info("State manager initialized")
+            // Initialize MongoDB state manager
+            logger.info("Initializing MongoDB state manager...")
+            stateManager = MongoStateManager(
+                connectionString = config.mongoConnectionString,
+                databaseName = config.mongoDatabase
+            )
+            logger.info("MongoDB state manager initialized")
+
+            // Initialize heartbeat service
+            logger.info("Initializing heartbeat service...")
+            heartbeatService = HeartbeatService(stateManager!!, config.heartbeatIntervalSeconds)
+            heartbeatService?.start()
+            logger.info("Heartbeat service started")
+
+            // Initialize health server
+            logger.info("Initializing health server...")
+            healthServer = HealthServer(
+                port = config.healthPort,
+                stateManager = stateManager!!,
+                heartbeatStaleThresholdSeconds = config.heartbeatStaleThresholdSeconds
+            )
+            healthServer?.start()
+            logger.info("Health server started on port ${config.healthPort}")
 
             // Initialize response handler
             logger.info("Initializing response handler...")
-            val responseHandler = ResponseHandler(stateManager)
+            val responseHandler = ResponseHandler(stateManager!!)
             logger.info("Response handler initialized")
 
             // Initialize and start event listener
@@ -68,7 +92,8 @@ class SlackConsultationServer {
             isRunning = true
 
             logger.info("=" * 50)
-            logger.info("✓ Server started successfully")
+            logger.info("Server started successfully")
+            logger.info("Health endpoint: http://localhost:${config.healthPort}/health")
             logger.info("Listening for Slack consultation responses...")
             logger.info("=" * 50)
 
@@ -88,6 +113,15 @@ class SlackConsultationServer {
         try {
             eventListener?.stop()
             logger.info("Event listener stopped")
+
+            heartbeatService?.stop()
+            logger.info("Heartbeat service stopped")
+
+            healthServer?.stop()
+            logger.info("Health server stopped")
+
+            stateManager?.close()
+            logger.info("State manager closed")
 
             isRunning = false
 

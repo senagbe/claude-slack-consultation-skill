@@ -1,7 +1,8 @@
 package com.claude.slack.cli
 
 import com.claude.slack.shared.config.ConfigManager
-import com.claude.slack.shared.state.StateManager
+import com.claude.slack.shared.state.MongoStateManager
+import com.claude.slack.shared.state.StateManagerInterface
 import com.claude.slack.cli.commands.*
 import kotlin.system.exitProcess
 
@@ -16,7 +17,13 @@ fun main(args: Array<String>) {
 
     // Initialize shared components
     val configManager = ConfigManager()
-    val stateManager = StateManager()
+    val config = configManager.loadConfig()
+
+    // Use MongoDB state manager
+    val stateManager: StateManagerInterface = MongoStateManager(
+        connectionString = config.mongoConnectionString,
+        databaseName = config.mongoDatabase
+    )
 
     val exitCode = try {
         when (command) {

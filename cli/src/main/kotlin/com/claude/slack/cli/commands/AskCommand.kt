@@ -1,16 +1,18 @@
 package com.claude.slack.cli.commands
 
 import com.claude.slack.shared.config.ConfigManager
+import com.claude.slack.shared.health.HealthClient
 import com.claude.slack.shared.models.ConsultationRequest
 import com.claude.slack.shared.slack.SlackClientWrapper
-import com.claude.slack.shared.state.StateManager
+import com.claude.slack.shared.state.StateManagerInterface
+import com.claude.slack.shared.util.RetryHelper
 import org.slf4j.LoggerFactory
 import java.time.Instant
 import java.time.temporal.ChronoUnit
 
 class AskCommand(
     private val configManager: ConfigManager,
-    private val stateManager: StateManager
+    private val stateManager: StateManagerInterface
 ) {
     private val logger = LoggerFactory.getLogger(AskCommand::class.java)
 
@@ -63,6 +65,13 @@ class AskCommand(
             // Load config
             val config = configManager.loadConfig()
 
+            // Pre-flight health check with retry
+            val healthClient = HealthClient("http://localhost:${config.healthPort}")
+
+            if (!performHealthCheck(healthClient, config.heartbeatStaleThresholdSeconds)) {
+                return 1
+            }
+
             // Initialize Slack client
             val slackClient = SlackClientWrapper(config)
 
@@ -76,7 +85,7 @@ class AskCommand(
                 return 1
             }
 
-            println("✓ Resolved to: ${user.profile?.realName ?: user.name} (${user.id})")
+            println("Resolved to: ${user.profile?.realName ?: user.name} (${user.id})")
 
             // Create consultation request
             val request = ConsultationRequest(
@@ -91,11 +100,11 @@ class AskCommand(
             val message = buildMessage(question)
             slackClient.sendDirectMessage(user.id, message)
 
-            println("✓ Question sent successfully")
+            println("Question sent successfully")
 
             // Store state
             stateManager.addRequest(request)
-            println("✓ Consultation request created: ${request.id}")
+            println("Consultation request created: ${request.id}")
 
             // Output summary
             println()
@@ -108,7 +117,7 @@ class AskCommand(
 
             // Wait for response if --wait flag is set
             if (waitForResponse) {
-                return waitForResponse(request.id, user.profile?.realName ?: user.name, timeoutMinutes)
+                return waitForResponse(request.id, user.profile?.realName ?: user.name, timeoutMinutes, healthClient, config.heartbeatStaleThresholdSeconds)
             }
 
             println("Use `/slack-skill:check ${request.id}` to retrieve the response.")
@@ -121,15 +130,95 @@ class AskCommand(
         }
     }
 
-    private fun waitForResponse(requestId: String, userName: String, timeoutMinutes: Int): Int {
+    private fun performHealthCheck(healthClient: HealthClient, staleThresholdSeconds: Int): Boolean {
+        println("Checking server health...")
+
+        val retryHelper = RetryHelper.forServerWait(
+            maxAttempts = 5,
+            initialDelayMs = 2000,
+            onRetry = { attempt, delayMs, _ ->
+                println("Server not ready, retrying in ${delayMs / 1000}s... (attempt ${attempt + 1}/5)")
+            }
+        )
+
+        val result = retryHelper.executeWithCondition(
+            condition = {
+                when (val health = healthClient.checkHealth()) {
+                    is HealthClient.HealthCheckResult.Healthy -> {
+                        if (health.status == "starting") {
+                            println("Server is starting up...")
+                            false
+                        } else {
+                            true
+                        }
+                    }
+                    is HealthClient.HealthCheckResult.Unhealthy -> {
+                        println("Server unhealthy: ${health.status}")
+                        false
+                    }
+                    is HealthClient.HealthCheckResult.ServerNotRunning -> {
+                        println("Server not running")
+                        false
+                    }
+                    is HealthClient.HealthCheckResult.Error -> {
+                        println("Health check error: ${health.message}")
+                        false
+                    }
+                }
+            },
+            block = { true }
+        )
+
+        return when (result) {
+            is RetryHelper.RetryResult.Success -> {
+                println("Server health check passed")
+                true
+            }
+            is RetryHelper.RetryResult.Failure -> {
+                System.err.println("Error: Server is not available after ${result.attempts} attempts")
+                System.err.println("Please ensure the server is running: ./scripts/start-server.sh")
+                false
+            }
+        }
+    }
+
+    private fun waitForResponse(
+        requestId: String,
+        userName: String,
+        timeoutMinutes: Int,
+        healthClient: HealthClient,
+        staleThresholdSeconds: Int
+    ): Int {
         val pollIntervalSeconds = 3 // Poll every 3 seconds
         val maxAttempts = (timeoutMinutes * 60) / pollIntervalSeconds
+        var lastHeartbeatWarning = 0L
 
-        println("⏳ Waiting for response from $userName (timeout: ${timeoutMinutes}m)...")
+        println("Waiting for response from $userName (timeout: ${timeoutMinutes}m)...")
         println()
 
         for (attempt in 1..maxAttempts) {
             Thread.sleep(pollIntervalSeconds * 1000L)
+
+            // Check heartbeat periodically (every 30 seconds)
+            if (attempt % 10 == 0) {
+                when (val heartbeat = healthClient.getHeartbeat()) {
+                    is HealthClient.HeartbeatResult.Success -> {
+                        if (heartbeat.isStale && System.currentTimeMillis() - lastHeartbeatWarning > 60000) {
+                            System.err.println("Warning: Server heartbeat is stale. The server may have stopped.")
+                            lastHeartbeatWarning = System.currentTimeMillis()
+                        }
+                    }
+                    is HealthClient.HeartbeatResult.NotFound -> {
+                        if (System.currentTimeMillis() - lastHeartbeatWarning > 60000) {
+                            System.err.println("Warning: No heartbeat found. Server may not be running.")
+                            lastHeartbeatWarning = System.currentTimeMillis()
+                        }
+                    }
+                    is HealthClient.HeartbeatResult.Error -> {
+                        logger.debug("Heartbeat check error: ${heartbeat.message}")
+                    }
+                }
+            }
 
             val request = stateManager.getRequest(requestId)
 
@@ -140,7 +229,7 @@ class AskCommand(
 
             when {
                 request.status == com.claude.slack.shared.models.Status.ANSWERED && request.response != null -> {
-                    println("✓ Response received from $userName")
+                    println("Response received from $userName")
                     println()
                     println("=" * 50)
                     println(request.response)
@@ -148,7 +237,7 @@ class AskCommand(
                     return 0 // Success
                 }
                 request.isExpired() -> {
-                    System.err.println("✗ Request expired without response")
+                    System.err.println("Request expired without response")
                     return 2
                 }
                 attempt % 10 == 0 -> {
@@ -161,7 +250,7 @@ class AskCommand(
 
         // Timeout
         println()
-        println("⏱ Timeout: No response received within ${timeoutMinutes} minutes")
+        println("Timeout: No response received within ${timeoutMinutes} minutes")
         println("You can check later with: /slack-skill:check $requestId")
         return 1
     }

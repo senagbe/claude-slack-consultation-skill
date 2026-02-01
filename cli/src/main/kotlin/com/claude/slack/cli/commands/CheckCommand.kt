@@ -1,12 +1,12 @@
 package com.claude.slack.cli.commands
 
 import com.claude.slack.shared.models.Status
-import com.claude.slack.shared.state.StateManager
+import com.claude.slack.shared.state.StateManagerInterface
 import org.slf4j.LoggerFactory
 import java.time.Duration
 import java.time.Instant
 
-class CheckCommand(private val stateManager: StateManager) {
+class CheckCommand(private val stateManager: StateManagerInterface) {
 
     private val logger = LoggerFactory.getLogger(CheckCommand::class.java)
 

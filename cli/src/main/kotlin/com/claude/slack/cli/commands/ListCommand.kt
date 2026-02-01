@@ -1,24 +1,21 @@
 package com.claude.slack.cli.commands
 
 import com.claude.slack.shared.models.Status
-import com.claude.slack.shared.state.StateManager
+import com.claude.slack.shared.state.StateManagerInterface
 import org.slf4j.LoggerFactory
 import java.time.Duration
 import java.time.Instant
 import java.time.temporal.ChronoUnit
 
-class ListCommand(private val stateManager: StateManager) {
+class ListCommand(private val stateManager: StateManagerInterface) {
 
     private val logger = LoggerFactory.getLogger(ListCommand::class.java)
 
     fun execute(args: List<String>): Int {
         return try {
-            val state = stateManager.readState()
-
             // Filter to last 7 days
             val cutoff = Instant.now().minus(7, ChronoUnit.DAYS)
-            val recentRequests = state.requests.filter { it.createdAt.isAfter(cutoff) }
-                .sortedByDescending { it.createdAt }
+            val recentRequests = stateManager.getRequestsSince(cutoff)
 
             if (recentRequests.isEmpty()) {
                 println("No consultation requests in the last 7 days")

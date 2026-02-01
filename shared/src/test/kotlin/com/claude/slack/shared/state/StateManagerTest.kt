@@ -20,7 +20,7 @@ class StateManagerTest {
     @Test
     fun `should read empty state when file does not exist`() {
         val statePath = File(tempDir, "state.json").absolutePath
-        val manager = StateManager(statePath)
+        val manager = FileStateManager(statePath)
 
         val state = manager.readState()
 
@@ -30,7 +30,7 @@ class StateManagerTest {
     @Test
     fun `should add and read consultation request`() {
         val statePath = File(tempDir, "state.json").absolutePath
-        val manager = StateManager(statePath)
+        val manager = FileStateManager(statePath)
 
         val request = ConsultationRequest(
             id = "test-id-123",
@@ -54,7 +54,7 @@ class StateManagerTest {
     @Test
     fun `should update consultation request`() {
         val statePath = File(tempDir, "state.json").absolutePath
-        val manager = StateManager(statePath)
+        val manager = FileStateManager(statePath)
 
         val request = ConsultationRequest(
             id = "test-id-123",
@@ -78,7 +78,7 @@ class StateManagerTest {
     @Test
     fun `should get latest pending request`() {
         val statePath = File(tempDir, "state.json").absolutePath
-        val manager = StateManager(statePath)
+        val manager = FileStateManager(statePath)
 
         val request1 = ConsultationRequest(
             id = "test-id-1",
@@ -110,7 +110,7 @@ class StateManagerTest {
     @Test
     fun `should get request by user`() {
         val statePath = File(tempDir, "state.json").absolutePath
-        val manager = StateManager(statePath)
+        val manager = FileStateManager(statePath)
 
         val request = ConsultationRequest(
             id = "test-id-123",
@@ -131,7 +131,7 @@ class StateManagerTest {
     @Test
     fun `should return null for non-existent request`() {
         val statePath = File(tempDir, "state.json").absolutePath
-        val manager = StateManager(statePath)
+        val manager = FileStateManager(statePath)
 
         val retrieved = manager.getRequest("non-existent-id")
 
@@ -142,7 +142,7 @@ class StateManagerTest {
     fun `should persist state across manager instances`() {
         val statePath = File(tempDir, "state.json").absolutePath
 
-        val manager1 = StateManager(statePath)
+        val manager1 = FileStateManager(statePath)
         val request = ConsultationRequest(
             id = "test-id-123",
             slackUserId = "U123ABC",
@@ -153,7 +153,7 @@ class StateManagerTest {
         manager1.addRequest(request)
 
         // Create new manager instance
-        val manager2 = StateManager(statePath)
+        val manager2 = FileStateManager(statePath)
         val retrieved = manager2.getRequest("test-id-123")
 
         assertNotNull(retrieved)
