@@ -20,4 +20,14 @@ dependencies {
 
     // Coroutines for async operations
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.7.3")
+
+    // MongoDB driver
+    implementation("org.mongodb:mongodb-driver-kotlin-sync:4.11.1")
+
+    // OkHttp for health client
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
+
+    // Testcontainers for MongoDB integration tests
+    testImplementation("org.testcontainers:mongodb:1.21.4")
+    testImplementation("org.testcontainers:junit-jupiter:1.21.4")
 }
