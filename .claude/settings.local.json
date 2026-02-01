@@ -4,7 +4,8 @@
       "WebSearch",
       "Bash(./gradlew projects:*)",
       "Bash(tree:*)",
-      "Bash(./gradlew:*)"
+      "Bash(./gradlew:*)",
+      "Skill(slack-skill:ask)"
     ]
   },
   "enabledMcpjsonServers": [],
